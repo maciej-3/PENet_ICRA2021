@@ -10,6 +10,7 @@ from model import PENet_C4
 from dataloaders.kitti_loader import KittiDepth
 from dataloaders.pp_loader import PPDataLoader
 from metrics import AverageMeter, Result
+from vis_utils import pp_save_depth_as_uint16png
 
 parser = argparse.ArgumentParser(description='Sparse-to-Dense')
 parser.add_argument('-n',
@@ -76,7 +77,7 @@ parser.add_argument('--resume',
                     metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--data-folder',
-                    default='/home/maciej/git/igdc/kitti_depth/depth',
+                    default='/home/maciej/git/igdc/pp_implementation_testing',
                     type=str,
                     metavar='PATH',
                     help='data folder (default: none)')
@@ -115,7 +116,7 @@ parser.add_argument('--jitter',
 parser.add_argument('-e', '--evaluate', default='', type=str, metavar='PATH')
 parser.add_argument('-f', '--freeze-backbone', action="store_true", default=False,
                     help='freeze parameters in backbone')
-parser.add_argument('--test', action="store_true", default=False,
+parser.add_argument('--test', action="store_true", default=True,
                     help='save result kitti test dataset for submission')
 parser.add_argument('--cpu', action="store_true", default=False, help='run on cpu')
 
@@ -142,12 +143,18 @@ parser.add_argument('--kitti', action="store_true", default=False,
 
 
 args = parser.parse_args()
+if args.kitti:
+    args.data_folder = '/home/maciej/git/igdc/kitti_depth/depth'
+    args.val_h = 352
+    args.val_w = 1216
+else:
+    args.val_h = 1472
+    args.val_w = 2048
 args.result = os.path.join('..', 'results')
 args.use_rgb = ('rgb' in args.input)
 args.use_d = 'd' in args.input
 args.use_g = 'g' in args.input
-args.val_h = 352
-args.val_w = 1216
+
 print(args)
 
 
@@ -207,7 +214,8 @@ def main():
             model.load_state_dict(checkpoint['model'], strict=False)
         #optimizer.load_state_dict(checkpoint['optimizer'])
         print("=> checkpoint state loaded.")
-    model = torch.nn.DataParallel(model)
+    if not args.cpu:
+        model = torch.nn.DataParallel(model)
 
     #TODO see their logger and helper
 
@@ -215,6 +223,8 @@ def main():
     ## get the data loader
     if args.kitti:
         val_dataset = KittiDepth('val', args)
+    elif args.test:
+        val_dataset = PPDataLoader('test', args)
     else:
         val_dataset = PPDataLoader('val', args)
     val_loader = torch.utils.data.DataLoader(
@@ -239,7 +249,7 @@ def main():
 
 
     ## make a prediction
-    mode = "val"
+    mode = "test_completion"
     model.eval()
     lr = 0
     torch.cuda.empty_cache()
@@ -250,8 +260,8 @@ def main():
         dstart = time.time()
         batch_data = {key: val.to(device) for key, val in batch_data.items() if val is not None}
 
-        gt = batch_data[
-            'gt'] if mode != 'test_prediction' and mode != 'test_completion' else None
+        if args.kitti:
+            gt = batch_data['gt'] #if mode != 'test_prediction' and mode != 'test_completion' else None
         data_time = time.time() - dstart
 
         pred = None
@@ -271,11 +281,16 @@ def main():
         with torch.no_grad():
             mini_batch_size = next(iter(batch_data.values())).size(0)
             result = Result()
-            if mode != 'test_prediction' and mode != 'test_completion':
+
+            pp_save_depth_as_uint16png(pred.data, "/home/maciej/git/igdc/pp_implementation_testing/pred_penet/" + str(i) + ".png")
+            # print(batch_data["index"])
+
+            if args.kitti:
                 result.evaluate(pred.data, gt.data, photometric_loss)
                 [
                     m.update(result, gpu_time, data_time, mini_batch_size) for m in meters
                 ]
+
 
                 print(
                     'RMSE={blk_avg.rmse:.2f}({average.rmse:.2f}) '

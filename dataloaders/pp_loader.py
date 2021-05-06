@@ -38,16 +38,19 @@ def load_calib(args):
         K[0, 2] = K[0, 2] - 13;
         K[1, 2] = K[1, 2] - 11.5;
     else:
-        K = np.array([[2293.930260445461, 0.0, 985.6622843134096],
-                    [0.0, 2350.181833543214, 810.7189706807927],
-                    [0.0, 0.0, 1.0]])
-        H = np.array([[1.0, 0.0, 0.0, 0.05],
-                    [0.0, 1.0, 0.0, 0.05],
-                    [0.0, 0.0, 1.0, 0.05]])
+        K = np.array([[2270.176025390625, 0.0, 977.3906152454074],
+                [0.0, 2317.939208984375, 809.0955059066837],
+                [0.0, 0.0, 1.0]])
+        # H = np.array([[1.0, 0.0, 0.0, 0.05],
+        #             [0.0, 1.0, 0.0, 0.05],
+        #             [0.0, 0.0, 1.0, 0.05]])
+        # the hard-coded numbers here are the size of the undistorted images
+        # since I do center crop, I need to (undist_dim - desired_dim)/2
+        # in my opinion in bottom crop you dont need any adjustements (so the opposite to what these guys did)
+        K[0, 2] = K[0, 2] - (2060-args.val_w)/2;
+        K[1, 2] = K[1, 2] - (1529-args.val_h)/2;
 
-
-
-    return K # TODO also return H if needed
+    return K
 
 
 
@@ -72,21 +75,31 @@ def get_paths_and_transform(split, args):
 
         def get_rgb_paths(p):
             return p.replace("groundtruth_depth", "image")
-    if not args.kitti:
+    elif split == 'test':
         # transform = no_transform
-        transform = val_transform
+        transform = pp_val_transform
         glob_d = os.path.join(
             args.data_folder,
-            "data_depth_selection/val_selection_cropped/velodyne_raw/*.png")
-        glob_gt = os.path.join(
+            "d/*.png")
+        glob_rgb = os.path.join(
             args.data_folder,
-            "data_depth_selection/val_selection_cropped/groundtruth_depth/*.png"
-        )
+            "rgb/*.png")
+        # glob_gt = os.path.join(
+        #     args.data_folder,
+        #     "data_depth_selection/val_selection_cropped/groundtruth_depth/*.png"
+        # )
 
-        def get_rgb_paths(p):
-            return p.replace("groundtruth_depth", "image")
+        # def get_rgb_paths(p):
+        #     return p.replace("d", "rgb")
 
-    if glob_gt is not None:
+
+    if glob_d is not None:
+        # train or val-full or val-select
+        paths_d = sorted(glob.glob(glob_d))
+        paths_rgb = sorted(glob.glob(glob_rgb))
+        paths_gt = [None] * len(paths_rgb)
+
+    elif glob_gt is not None:
         # train or val-full or val-select
         paths_d = sorted(glob.glob(glob_d))
         paths_gt = sorted(glob.glob(glob_gt))
@@ -104,22 +117,25 @@ def get_paths_and_transform(split, args):
     #         paths_d = sorted(glob.glob(glob_d))
 
 
-    if len(paths_d) == 0 and len(paths_rgb) == 0 and len(paths_gt) == 0:
-        raise (RuntimeError("Found 0 images under {}".format(glob_gt)))
-    if len(paths_d) == 0 and args.use_d:
-        raise (RuntimeError("Requested sparse depth but none was found"))
-    if len(paths_rgb) == 0 and args.use_rgb:
-        raise (RuntimeError("Requested rgb images but none was found"))
-    if len(paths_rgb) == 0 and args.use_g:
-        raise (RuntimeError("Requested gray images but no rgb was found"))
-    if len(paths_rgb) != len(paths_d) or len(paths_rgb) != len(paths_gt):
-        print(len(paths_rgb), len(paths_d), len(paths_gt))
-        # for i in range(999):
-        #    print("#####")
-        #    print(paths_rgb[i])
-        #    print(paths_d[i])
-        #    print(paths_gt[i])
-        # raise (RuntimeError("Produced different sizes for datasets"))
+    if glob_gt is not None:
+        if len(paths_d) == 0 and len(paths_rgb) == 0 and len(paths_gt) == 0:
+            raise (RuntimeError("Found 0 images under {}".format(glob_gt)))
+        # if len(paths_d) == 0 and len(paths_rgb) == 0:
+        #     raise (RuntimeError("Found 0 images under {}".format(glob_gt)))
+        if len(paths_d) == 0 and args.use_d:
+            raise (RuntimeError("Requested sparse depth but none was found"))
+        if len(paths_rgb) == 0 and args.use_rgb:
+            raise (RuntimeError("Requested rgb images but none was found"))
+        if len(paths_rgb) == 0 and args.use_g:
+            raise (RuntimeError("Requested gray images but no rgb was found"))
+        if len(paths_rgb) != len(paths_d) or len(paths_rgb) != len(paths_gt):
+            print(len(paths_rgb), len(paths_d), len(paths_gt))
+            # for i in range(999):
+            #    print("#####")
+            #    print(paths_rgb[i])
+            #    print(paths_d[i])
+            #    print(paths_gt[i])
+            # raise (RuntimeError("Produced different sizes for datasets"))
     paths = {"rgb": paths_rgb, "d": paths_d, "gt": paths_gt}
     return paths, transform
 
@@ -151,6 +167,24 @@ def depth_read(filename):
     depth = np.expand_dims(depth, -1)
     return depth
 
+def pp_depth_read(filename):
+    # loads depth map D from png file
+    # and returns it as a numpy array,
+    # for details see readme.txt
+    assert os.path.exists(filename), "file not found: {}".format(filename)
+    img_file = Image.open(filename)
+    depth_png = np.array(img_file, dtype=int)
+    img_file.close()
+    # make sure we have a proper 16bit depth map here.. not 8bit!
+    assert np.max(depth_png) > 256, \
+        "np.max(depth_png)={}, path={}".format(np.max(depth_png), filename) # this can be, though if i wanna make sure
+    # that nothing below 1m is stored than this number should be 1000
+    pp_scale = 1000.0
+    depth = depth_png.astype(np.float) / pp_scale
+    # depth[depth_png == 0] = -1.
+    depth = np.expand_dims(depth, -1)
+    return depth
+
 
 def train_transform(rgb, d, gt, position, args):
     pass
@@ -171,7 +205,26 @@ def val_transform(rgb, d, gt, position, args):
         target = transform(gt)
     if position is not None:
         position = transform(position)
+    target = None
+    return rgb, sparse, target, position
 
+
+def pp_val_transform(rgb, d, gt, position, args):
+    oheight = args.val_h
+    owidth = args.val_w
+
+    transform = transforms.Compose([
+        transforms.CenterCrop((oheight, owidth)),
+    ])
+    if rgb is not None:
+        rgb = transform(rgb)
+    if d is not None:
+        sparse = transform(d)
+    if gt is not None:
+        target = transform(gt)
+    if position is not None:
+        position = transform(position)
+    target = None
     return rgb, sparse, target, position
 
 
@@ -245,10 +298,16 @@ class PPDataLoader(data.Dataset):
     def __getraw__(self, index):
         rgb = rgb_read(self.paths['rgb'][index]) if \
             (self.paths['rgb'][index] is not None and (self.args.use_rgb or self.args.use_g)) else None
-        d = depth_read(self.paths['d'][index]) if \
-            (self.paths['d'][index] is not None and self.args.use_d) else None
-        gt = depth_read(self.paths['gt'][index]) if \
-            self.paths['gt'][index] is not None else None
+        if self.args.kitti:
+            d = depth_read(self.paths['d'][index]) if \
+                (self.paths['d'][index] is not None and self.args.use_d) else None
+            gt = depth_read(self.paths['gt'][index]) if \
+                self.paths['gt'][index] is not None else None
+        else:
+            d = pp_depth_read(self.paths['d'][index]) if \
+                (self.paths['d'][index] is not None and self.args.use_d) else None
+            gt = pp_depth_read(self.paths['gt'][index]) if \
+                self.paths['gt'][index] is not None else None
         return rgb, d, gt
 
     def __getitem__(self, index):
@@ -260,14 +319,26 @@ class PPDataLoader(data.Dataset):
         rgb, gray = handle_gray(rgb, self.args)
         # candidates = {"rgb": rgb, "d": sparse, "gt": target, \
         #              "g": gray, "r_mat": r_mat, "t_vec": t_vec, "rgb_near": rgb_near}
-        candidates = {"rgb": rgb, "d": d, "gt": gt, "g": gray, 'position': position, 'K': self.K}
+        candidates = {"rgb": rgb, "d": d, "gt": gt, "g": gray, 'position': position, 'K': self.K, #"index": index
+                      }
 
         items = {
             key: to_float_tensor(val)
-            for key, val in candidates.items() if val is not None
+            # key: val # that does not work
+        for key, val in candidates.items() if val is not None #or key != "index" # that does not work
         }
 
         return items
 
     def __len__(self):
         return len(self.paths['gt'])
+
+
+
+# testing
+if __name__ == '__main__':
+    depth_pred = pp_depth_read("/home/maciej/git/igdc/pp_implementation_testing/pred/0.png")
+    depth_velo = pp_depth_read("/home/maciej/ros1_wss/pp_collector/src/pp_img_undistorter/tmp/test_dmap.png")
+    print("")
+
+    pass
