@@ -10,6 +10,7 @@ import torch
 import torch.utils.data as data
 import cv2
 from dataloaders import transforms
+from dataloaders.pp_pose_estimator import get_pose_pnp
 import CoordConv
 
 
@@ -46,7 +47,6 @@ def load_calib(args):
         #             [0.0, 0.0, 1.0, 0.05]])
         # the hard-coded numbers here are the size of the undistorted images
         # since I do center crop, I need to (undist_dim - desired_dim)/2
-        # in my opinion in bottom crop you dont need any adjustements (so the opposite to what these guys did)
         K[0, 2] = K[0, 2] - (2060-args.val_w)/2;
         K[1, 2] = K[1, 2] - (1529-args.val_h)/2;
 
@@ -75,7 +75,7 @@ def get_paths_and_transform(split, args):
 
         def get_rgb_paths(p):
             return p.replace("groundtruth_depth", "image")
-    elif split == 'test':
+    elif split == 'test' or 'train':
         # transform = no_transform
         transform = pp_val_transform
         glob_d = os.path.join(
@@ -209,7 +209,7 @@ def val_transform(rgb, d, gt, position, args):
     return rgb, sparse, target, position
 
 
-def pp_val_transform(rgb, d, gt, position, args):
+def pp_val_transform(rgb, d, gt, rgb_near, position, args):
     oheight = args.val_h
     owidth = args.val_w
 
@@ -219,17 +219,19 @@ def pp_val_transform(rgb, d, gt, position, args):
     if rgb is not None:
         rgb = transform(rgb)
     if d is not None:
-        sparse = transform(d)
+        d = transform(d)
     if gt is not None:
-        target = transform(gt)
+        gt = transform(gt)
+    if rgb_near is not None:
+        rgb_near = transform(rgb_near)
     if position is not None:
         position = transform(position)
-    target = None
-    return rgb, sparse, target, position
+    gt = None
+    return rgb, d, gt, rgb_near, position
 
 
-def no_transform(rgb, sparse, target, position, args):
-    return rgb, sparse, target, position
+def no_transform(rgb, sparse, target, rgb_near, position, args):
+    return rgb, sparse, target, rgb_near, position
 
 
 to_tensor = transforms.ToTensor()
@@ -262,22 +264,26 @@ def get_rgb_near(path, args):
 
     def get_nearby_filename(filename, new_id):
         head, _ = os.path.split(filename)
-        new_filename = os.path.join(head, '%010d.png' % new_id)
+        # new_filename = os.path.join(head, '%010d.png' % new_id)
+        new_filename = os.path.join(head, '%d.png' % new_id)
         return new_filename
 
     head, number = extract_frame_id(path)
     count = 0
-    max_frame_diff = 3
+    max_frame_diff = 5
     candidates = [
         i - max_frame_diff for i in range(max_frame_diff * 2 + 1)
         if i - max_frame_diff != 0
     ]
     while True:
+        # TODO naming of my rgbs and d's must be 1, 2, 3, 4, ... not 3, 16, 22 ...
+        # TODO from what range to randomly choose must be tuned cos my consecutive iages will be quite close and the depth can be better calulated from the further rgbs than from closer ones
         random_offset = choice(candidates)
         path_near = get_nearby_filename(path, number + random_offset)
         if os.path.exists(path_near):
             break
         assert count < 20, "cannot find a nearby frame in 20 trials for {}".format(path_near)
+        count += 1
 
     return rgb_read(path_near)
 
@@ -308,18 +314,40 @@ class PPDataLoader(data.Dataset):
                 (self.paths['d'][index] is not None and self.args.use_d) else None
             gt = pp_depth_read(self.paths['gt'][index]) if \
                 self.paths['gt'][index] is not None else None
-        return rgb, d, gt
+        rgb_near = get_rgb_near(self.paths['rgb'][index], self.args) if \
+            self.split == 'train' and self.args.use_pose else None
+
+        return rgb, d, gt, rgb_near
 
     def __getitem__(self, index):
-        rgb, d, gt = self.__getraw__(index)
+        rgb, d, gt, rgb_near = self.__getraw__(index)
         position = CoordConv.AddCoordsNp(self.args.val_h, self.args.val_w)
         position = position.call()
-        rgb, d, gt, position = self.transform(rgb, d, gt, position, self.args)
+        rgb, d, gt, rgb_near, position = self.transform(rgb, d, gt, rgb_near, position, self.args)
+
+        # [R|t] between two rgb's
+        r_mat, t_vec = None, None
+        if self.split == 'train' and self.args.use_pose:
+            success, r_vec, t_vec = get_pose_pnp(rgb, rgb_near, d, self.K)
+            # discard if translation is too small
+            success = success and LA.norm(t_vec) > self.threshold_translation
+            if success:
+                r_mat, _ = cv2.Rodrigues(r_vec)
+            else:
+                # return the same image and no motion when PnP fails
+                rgb_near = rgb
+                t_vec = np.zeros((3, 1))
+                r_mat = np.eye(3)
 
         rgb, gray = handle_gray(rgb, self.args)
         # candidates = {"rgb": rgb, "d": sparse, "gt": target, \
         #              "g": gray, "r_mat": r_mat, "t_vec": t_vec, "rgb_near": rgb_near}
-        candidates = {"rgb": rgb, "d": d, "gt": gt, "g": gray, 'position': position, 'K': self.K, #"index": index
+        candidates = {'rgb': rgb, 'd': d, 'gt': gt, 'rgb_near': rgb_near,
+                      "r_mat": r_mat,
+                      "t_vec": t_vec,
+                      'g': gray,
+                      'position': position,
+                      'K': self.K, #"index": index
                       }
 
         items = {
@@ -337,8 +365,10 @@ class PPDataLoader(data.Dataset):
 
 # testing
 if __name__ == '__main__':
-    depth_pred = pp_depth_read("/home/maciej/git/igdc/pp_implementation_testing/pred/0.png")
-    depth_velo = pp_depth_read("/home/maciej/ros1_wss/pp_collector/src/pp_img_undistorter/tmp/test_dmap.png")
-    print("")
+    # depth_pred = pp_depth_read("/home/maciej/git/igdc/pp_implementation_testing/pred/0.png")
+    # depth_velo = pp_depth_read("/home/maciej/ros1_wss/pp_collector/src/pp_img_undistorter/tmp/test_dmap.png")
+    args = None
+    get_rgb_near("/home/maciej/git/igdc/pp_implementation_testing/rgb/3.png", args)
 
-    pass
+
+    print("")
