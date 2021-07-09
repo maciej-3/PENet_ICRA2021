@@ -604,6 +604,7 @@ def main():
         #
         # if i == 15:
         #     return
+    print("=> iterating over the main loop completed.")
 
 
 if __name__ == '__main__':

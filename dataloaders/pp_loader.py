@@ -9,8 +9,8 @@ from PIL import Image
 import torch
 import torch.utils.data as data
 import cv2
-from dataloaders import transforms
-from dataloaders.pp_pose_estimator import get_pose_pnp
+from . import transforms
+from .pp_pose_estimator import get_pose_pnp
 import CoordConv
 
 
