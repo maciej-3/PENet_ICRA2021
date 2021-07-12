@@ -1,0 +1,1 @@
+python pp_prediction.py -n pe -he 160 -w 576 --train -m dense --data-folder /home/maciej/Downloads/210601_target/CC_registered/5m/210702_5m_target_wall --resume /home/maciej/git/igdc/PENet_ICRA2021/pretrained/pe.pth.tar

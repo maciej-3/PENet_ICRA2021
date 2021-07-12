@@ -157,7 +157,9 @@ parser.add_argument(
 
 args = parser.parse_args()
 # if I use photos to calulate relative poses and use them for training
-args.use_pose = ("photo" in args.train_mode)
+#args.use_pose if "photo" in args.train_mode
+args.use_pose = True if "photo" in args.train_mode else False
+
 if args.kitti:
     args.data_folder = '/home/maciej/git/igdc/kitti_depth/depth'
     args.val_h = 352
@@ -231,7 +233,8 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
             for key, val in batch_data.items() if val is not None
         }
 
-        # gt = batch_data['gt'] #if mode != 'test_prediction' and mode != 'test_completion' else None
+        if mode == 'train':
+            gt = batch_data['gt']
         data_time = time.time() - dstart
 
         pred = None
@@ -249,7 +252,7 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
 
         if(args.evaluate):
             gpu_time = time.time() - start
-        #'''
+        #
 
         depth_loss, photometric_loss, smooth_loss, mask = 0, 0, 0, None
 
@@ -310,17 +313,21 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
                 smooth_loss = smoothness_criterion(pred) if args.w2 > 0 else 0
 
 
-
-            if args.network_model == 'e':
-                # TODO check what these losses are
-                st1_loss = depth_criterion(st1_pred, gt)
-                st2_loss = depth_criterion(st2_pred, gt)
-                loss = w_st1 * st1_loss + w_st2 * st2_loss + \
-                       (1 - w_st1 - w_st2) * \
-                       depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
+            # TODO these loses to be fixed: for self-supervised and supervised separately
+            if 'dense' in args.train_mode:
+                loss = depth_loss
+            # so if self-supervised stuff needed
             else:
-                # loss = depth_loss
-                loss = depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
+                if args.network_model == 'e':
+                    # TODO check what these losses are
+                    st1_loss = depth_criterion(st1_pred, gt)
+                    st2_loss = depth_criterion(st2_pred, gt)
+                    loss = w_st1 * st1_loss + w_st2 * st2_loss + \
+                           (1 - w_st1 - w_st2) * \
+                           depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
+                else:
+                    # loss = depth_loss
+                    loss = depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
 
 
             if i % multi_batch_size == 0:
@@ -330,7 +337,7 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
             if i % multi_batch_size == (multi_batch_size-1) or i==(len(loader)-1):
                 optimizer.step()
             print("loss:", loss, " epoch:", epoch, " ", i, "/", len(loader))
-
+#/home/maciej/Downloads/210601_target/CC_registered/5m/210702_5m_target_wall
 
         # if mode == "test_completion":
         #     str_i = str(i)

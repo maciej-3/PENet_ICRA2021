@@ -75,7 +75,7 @@ def get_paths_and_transform(split, args):
 
         def get_rgb_paths(p):
             return p.replace("groundtruth_depth", "image")
-    elif split == 'test' or 'train':
+    elif split == 'test':
         # transform = no_transform
         transform = pp_val_transform
         glob_d = os.path.join(
@@ -89,21 +89,29 @@ def get_paths_and_transform(split, args):
         #     "data_depth_selection/val_selection_cropped/groundtruth_depth/*.png"
         # )
 
-        # def get_rgb_paths(p):
-        #     return p.replace("d", "rgb")
+    elif split == 'train':
+        transform = pp_train_transform
+        glob_d = os.path.join(args.data_folder,
+                "d/*.png")
+        glob_gt = os.path.join(args.data_folder,
+                "gt/*.png")
+        glob_rgb = os.path.join(
+            args.data_folder,
+            "rgb/*.png")
 
+    def get_rgb_paths(p):
+        return p.replace("gt", "rgb")
+    if glob_gt is not None:
+        paths_d = sorted(glob.glob(glob_d))
+        paths_gt = sorted(glob.glob(glob_gt))
+        paths_rgb = [get_rgb_paths(p) for p in paths_gt]
 
-    if glob_d is not None:
+    #TODO figure out how to handle d and gt here
+    elif glob_d is not None:
         # train or val-full or val-select
         paths_d = sorted(glob.glob(glob_d))
         paths_rgb = sorted(glob.glob(glob_rgb))
         paths_gt = [None] * len(paths_rgb)
-
-    elif glob_gt is not None:
-        # train or val-full or val-select
-        paths_d = sorted(glob.glob(glob_d))
-        paths_gt = sorted(glob.glob(glob_gt))
-        paths_rgb = [get_rgb_paths(p) for p in paths_gt]
 
     #TODO write code that can handle only rgb and d data without gt so that it works later
     # else:
@@ -179,7 +187,7 @@ def pp_depth_read(filename):
     assert np.max(depth_png) > 256, \
         "np.max(depth_png)={}, path={}".format(np.max(depth_png), filename) # this can be, though if i wanna make sure
     # that nothing below 1m is stored than this number should be 1000
-    pp_scale = 1000.0
+    pp_scale = 655.35
     depth = depth_png.astype(np.float) / pp_scale
     # depth[depth_png == 0] = -1.
     depth = np.expand_dims(depth, -1)
@@ -207,6 +215,83 @@ def val_transform(rgb, d, gt, position, args):
         position = transform(position)
     target = None
     return rgb, sparse, target, position
+
+def pp_train_transform(rgb, d, gt, position, args):
+    oheight = args.val_h
+    owidth = args.val_w
+
+    do_flip = np.random.uniform(0.0, 1.0) < 0.5  # random horizontal flip
+
+    transforms_list = [
+        # transforms.Rotate(angle),
+        # transforms.Resize(s),
+        transforms.BottomCrop((oheight, owidth)),
+        transforms.HorizontalFlip(do_flip)
+    ]
+
+    # if small_training == True:
+    # transforms_list.append(transforms.RandomCrop((rheight, rwidth)))
+
+    transform_geometric = transforms.Compose(transforms_list)
+
+    if d is not None:
+        d = transform_geometric(d)
+    print(gt)
+    gt = transform_geometric(gt)
+    if rgb is not None:
+        brightness = np.random.uniform(max(0, 1 - args.jitter),
+                                       1 + args.jitter)
+        contrast = np.random.uniform(max(0, 1 - args.jitter), 1 + args.jitter)
+        saturation = np.random.uniform(max(0, 1 - args.jitter),
+                                       1 + args.jitter)
+        transform_rgb = transforms.Compose([
+            transforms.ColorJitter(brightness, contrast, saturation, 0),
+            transform_geometric
+        ])
+        rgb = transform_rgb(rgb)
+    # d = drop_depth_measurements(d, 0.9)
+
+    if position is not None:
+        bottom_crop_only = transforms.Compose([transforms.BottomCrop((oheight, owidth))])
+        position = bottom_crop_only(position)
+
+    # random crop
+    #if small_training == True:
+    if args.not_random_crop == False:
+        h = oheight
+        w = owidth
+        rheight = args.random_crop_height
+        rwidth = args.random_crop_width
+        # randomlize
+        i = np.random.randint(0, h - rheight + 1)
+        j = np.random.randint(0, w - rwidth + 1)
+
+        if rgb is not None:
+            if rgb.ndim == 3:
+                rgb = rgb[i:i + rheight, j:j + rwidth, :]
+            elif rgb.ndim == 2:
+                rgb = rgb[i:i + rheight, j:j + rwidth]
+
+        if d is not None:
+            if d.ndim == 3:
+                d = d[i:i + rheight, j:j + rwidth, :]
+            elif d.ndim == 2:
+                d = d[i:i + rheight, j:j + rwidth]
+
+        if gt is not None:
+            if gt.ndim == 3:
+                gt = gt[i:i + rheight, j:j + rwidth, :]
+            elif gt.ndim == 2:
+                gt = gt[i:i + rheight, j:j + rwidth]
+
+        if position is not None:
+            if position.ndim == 3:
+                position = position[i:i + rheight, j:j + rwidth, :]
+            elif position.ndim == 2:
+                position = position[i:i + rheight, j:j + rwidth]
+
+    return rgb, d, gt, position
+
 
 
 def pp_val_transform(rgb, d, gt, rgb_near, position, args):
@@ -323,7 +408,9 @@ class PPDataLoader(data.Dataset):
         rgb, d, gt, rgb_near = self.__getraw__(index)
         position = CoordConv.AddCoordsNp(self.args.val_h, self.args.val_w)
         position = position.call()
-        rgb, d, gt, rgb_near, position = self.transform(rgb, d, gt, rgb_near, position, self.args)
+        #TODO incorporate the rgb_near someh
+        #rgb, d, gt, rgb_near, position = self.transform(rgb, d, gt, position, self.args)
+        rgb, d, gt, position = self.transform(rgb, d, gt, position, self.args)
 
         # [R|t] between two rgb's
         r_mat, t_vec = None, None
