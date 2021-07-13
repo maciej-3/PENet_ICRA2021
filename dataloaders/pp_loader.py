@@ -102,7 +102,7 @@ def get_paths_and_transform(split, args):
             "rgb/*.png")
 
     def get_rgb_paths(p):
-        return p.replace("d", "rgb")
+        return p.replace("gt", "rgb")
     if glob_gt is not None:
         paths_d = sorted(glob.glob(glob_d))
         paths_gt = sorted(glob.glob(glob_gt))
