@@ -89,6 +89,8 @@ def get_paths_and_transform(split, args):
         #     "data_depth_selection/val_selection_cropped/groundtruth_depth/*.png"
         # )
 
+        # def get_rgb_paths(p):
+        #     return p.replace("d", "rgb")
     elif split == 'train':
         transform = pp_train_transform
         glob_d = os.path.join(args.data_folder,
@@ -98,9 +100,7 @@ def get_paths_and_transform(split, args):
         glob_rgb = os.path.join(
             args.data_folder,
             "rgb/*.png")
-
-    def get_rgb_paths(p):
-        return p.replace("gt", "rgb")
+    if glob_d is not None:
     if glob_gt is not None:
         paths_d = sorted(glob.glob(glob_d))
         paths_gt = sorted(glob.glob(glob_gt))
@@ -257,7 +257,7 @@ def pp_train_transform(rgb, d, gt, position, args):
 
     # random crop
     #if small_training == True:
-    if args.not_random_crop == False:
+    if args.random_crop == True:
         h = oheight
         w = owidth
         rheight = args.random_crop_height
@@ -306,8 +306,6 @@ def pp_val_transform(rgb, d, gt, rgb_near, position, args):
     if d is not None:
         d = transform(d)
     if gt is not None:
-        gt = transform(gt)
-    if rgb_near is not None:
         rgb_near = transform(rgb_near)
     if position is not None:
         position = transform(position)

@@ -123,7 +123,7 @@ parser.add_argument('-f', '--freeze-backbone', action="store_true", default=Fals
 parser.add_argument('--cpu', action="store_true", default=False, help='run on cpu')
 
 #random cropping
-parser.add_argument('--not-random-crop', action="store_true", default=False,
+parser.add_argument('--random-crop', action="store_true", default=False,
                     help='prohibit random cropping')
 parser.add_argument('-he', '--random-crop-height', default=320, type=int, metavar='N',
                     help='random crop height')
