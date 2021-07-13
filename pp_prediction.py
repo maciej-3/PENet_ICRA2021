@@ -378,15 +378,16 @@ def main():
     global args
 
     ## get the model
-    if args.evaluate == '':
-        args.evaluate = "/home/maciej/git/igdc/PENet_ICRA2021/pretrained/pe.pth.tar"
-    if os.path.isfile(args.evaluate):
-        print("=> loading checkpoint '{}' ... ".format(args.evaluate), end='')
-        checkpoint = torch.load(args.evaluate, map_location=device)
-        print("Completed.")
-    else:
-        print("No model found at '{}'".format(args.evaluate))
-        return
+    if args.evaluate != '':
+        if os.path.isfile(args.evaluate):
+            print("=> loading checkpoint '{}' ... ".format(args.evaluate), end='')
+            checkpoint = torch.load(args.evaluate, map_location=device)
+            print("Completed.")
+        else:
+            print("No model found at '{}'".format(args.evaluate))
+            return
+    else
+        print("Starting with clear model (without pretrained weights).")
 
     print("=> creating model ... ", end='')
     model = None
