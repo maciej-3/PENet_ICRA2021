@@ -386,7 +386,7 @@ def main():
         else:
             print("No model found at '{}'".format(args.evaluate))
             return
-    else
+    else:
         print("Starting with clear model (without pretrained weights).")
 
     print("=> creating model ... ", end='')
