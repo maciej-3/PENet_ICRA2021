@@ -100,7 +100,7 @@ def get_paths_and_transform(split, args):
         glob_rgb = os.path.join(
             args.data_folder,
             "rgb/*.png")
-    if glob_d is not None:
+
     if glob_gt is not None:
         paths_d = sorted(glob.glob(glob_d))
         paths_gt = sorted(glob.glob(glob_gt))
