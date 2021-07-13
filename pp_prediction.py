@@ -387,7 +387,7 @@ def main():
             print("No model found at '{}'".format(args.evaluate))
             return
     else:
-        checkpoint =- None
+        checkpoint = None
         print("Starting with clear model (without pretrained weights).")
 
     print("=> creating model ... ", end='')
