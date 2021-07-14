@@ -258,7 +258,7 @@ def pp_train_transform(rgb, d, gt, position, args):
         ])
         rgb = transform_rgb(rgb)
         #when gt is actually rgb_near
-        if args.use_pose:
+        if args.train and args.use_pose:
             gt = transform_rgb(gt)
     # d = drop_depth_measurements(d, 0.9)
 

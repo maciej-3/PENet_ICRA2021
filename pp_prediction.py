@@ -466,6 +466,12 @@ def main():
     else:
         for p in model.parameters():
             p.requires_grad = False
+
+        def count_parameters(model):
+            return sum(p.numel() for p in model.parameters()) #if p.requires_grad)
+        print("Number of params here is: ")
+        print(count_parameters(model))
+
         iterate("val", args, val_loader, model, None, logger, args.start_epoch - 1)
         return
 
@@ -511,10 +517,6 @@ def main():
     torch.cuda.empty_cache()
 
 
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("Number of params here is: ")
-    print(count_parameters(model))
 
     print("=> starting main loop ...")
     for epoch in range(args.start_epoch, args.epochs):
