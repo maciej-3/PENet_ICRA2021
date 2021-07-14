@@ -100,19 +100,19 @@ def get_paths_and_transform(split, args):
         transform = no_transform
         glob_d = os.path.join(
             args.data_folder,
-            "data_depth_selection/test_depth_completion_anonymous/velodyne_raw/*.png"
+            "depth_selection/test_depth_completion_anonymous/velodyne_raw/*.png"
         )
         glob_gt = None  # "test_depth_completion_anonymous/"
         glob_rgb = os.path.join(
             args.data_folder,
-            "data_depth_selection/test_depth_completion_anonymous/image/*.png")
+            "depth_selection/test_depth_completion_anonymous/image/*.png")
     elif split == "test_prediction":
         transform = no_transform
         glob_d = None
         glob_gt = None  # "test_depth_completion_anonymous/"
         glob_rgb = os.path.join(
             args.data_folder,
-            "data_depth_selection/test_depth_prediction_anonymous/image/*.png")
+            "depth_selection/test_depth_prediction_anonymous/image/*.png")
     else:
         raise ValueError("Unrecognized split " + str(split))
 

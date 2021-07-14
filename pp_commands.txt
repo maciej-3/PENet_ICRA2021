@@ -1,0 +1,2 @@
+# this command will work make and save predictions for 1000 rgb-d paris of KITTI 
+python main.py -b 1 -n pe --evaluate /home/maciej/git/igdc/PENet_ICRA2021/pretrained/pe.pth.tar --data-folder /home/maciej/git/igdc/kitti_depth/depth/ --test --data-folder-save /home/maciej/git/igdc/kitti_depth/depth/depth_selection/test_depth_completion_anonymous/penet_predict
