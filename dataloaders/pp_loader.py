@@ -75,9 +75,13 @@ def get_paths_and_transform(split, args):
 
         def get_rgb_paths(p):
             return p.replace("groundtruth_depth", "image")
-    elif split == 'test':
+    elif split == 'test' or split == 'train' and args.use_pose:
         # transform = no_transform
-        transform = pp_val_transform
+        if args.use_pose:
+            transform = pp_train_transform
+        else:
+            transform = pp_val_transform
+
         glob_d = os.path.join(
             args.data_folder,
             "d/*.png")
@@ -91,7 +95,7 @@ def get_paths_and_transform(split, args):
 
         # def get_rgb_paths(p):
         #     return p.replace("d", "rgb")
-    elif split == 'train':
+    elif split == 'train' and not args.use_pose:
         transform = pp_train_transform
         glob_d = os.path.join(args.data_folder,
                 "d/*.png")
@@ -238,8 +242,10 @@ def pp_train_transform(rgb, d, gt, position, args):
 
     if d is not None:
         d = transform_geometric(d)
-    print(gt)
-    gt = transform_geometric(gt)
+    #print(gt)
+    # when gt is actually a dense depth map
+    if not args.use_pose:
+        gt = transform_geometric(gt)
     if rgb is not None:
         brightness = np.random.uniform(max(0, 1 - args.jitter),
                                        1 + args.jitter)
@@ -251,6 +257,9 @@ def pp_train_transform(rgb, d, gt, position, args):
             transform_geometric
         ])
         rgb = transform_rgb(rgb)
+        #when gt is actually rgb_near
+        if args.use_pose:
+            gt = transform_rgb(gt)
     # d = drop_depth_measurements(d, 0.9)
 
     if position is not None:
@@ -409,8 +418,12 @@ class PPDataLoader(data.Dataset):
         position = CoordConv.AddCoordsNp(self.args.val_h, self.args.val_w)
         position = position.call()
         #TODO incorporate the rgb_near someh
-        #rgb, d, gt, rgb_near, position = self.transform(rgb, d, gt, position, self.args)
-        rgb, d, gt, position = self.transform(rgb, d, gt, position, self.args)
+        # if self-supervised framework, then use rgb_near instead of dense detph map
+        if args.use_pose:
+            rgb, d, rgb_near, position = self.transform(rgb, d, rgb_near, position, self.args)
+        # if supervised framework, then use dense depth map = gt
+        else:
+            rgb, d, gt, position = self.transform(rgb, d, gt, position, self.args)
 
         # [R|t] between two rgb's
         r_mat, t_vec = None, None

@@ -233,7 +233,7 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
             for key, val in batch_data.items() if val is not None
         }
 
-        if mode == 'train':
+        if mode == 'train' and 'dense' in args.train_mode:
             gt = batch_data['gt']
         data_time = time.time() - dstart
 
@@ -315,6 +315,7 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
 
             # TODO these loses to be fixed: for self-supervised and supervised separately
             if 'dense' in args.train_mode:
+                # check if this loss is correct or we need something more complex like the one below
                 loss = depth_loss
             # so if self-supervised stuff needed
             else:
@@ -506,6 +507,11 @@ def main():
     model.eval()
     torch.cuda.empty_cache()
 
+
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of params here is: ")
+    print(count_parameters(model))
 
     print("=> starting main loop ...")
     for epoch in range(args.start_epoch, args.epochs):
