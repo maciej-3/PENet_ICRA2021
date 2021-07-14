@@ -328,7 +328,10 @@ def iterate(mode, args, loader, model, optimizer, logger, epoch):
                            depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
                 else:
                     # loss = depth_loss
+                    args.w1 = 0.2
+                    args.w2 = 0.2
                     loss = depth_loss + args.w1 * photometric_loss + args.w2 * smooth_loss # I integrated the loss from Ma's paper
+
 
 
             if i % multi_batch_size == 0:
