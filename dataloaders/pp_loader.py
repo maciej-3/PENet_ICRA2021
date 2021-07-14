@@ -419,7 +419,7 @@ class PPDataLoader(data.Dataset):
         position = position.call()
         #TODO incorporate the rgb_near someh
         # if self-supervised framework, then use rgb_near instead of dense detph map
-        if args.use_pose:
+        if self.args.use_pose:
             rgb, d, rgb_near, position = self.transform(rgb, d, rgb_near, position, self.args)
         # if supervised framework, then use dense depth map = gt
         else:
